@@ -95,7 +95,6 @@ func main() {
 		if err := clipboard.WriteAll(translatedText); err != nil {
 			log.Fatalf("Failed to copy translation to clipboard: %v", err)
 		}
-		fmt.Println("(Translation copied to clipboard)")
 	}
 }
 
