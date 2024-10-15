@@ -1,4 +1,4 @@
-# CLI Translator
+# translate-cli
 
 🌍 A simple CLI application for translations using OpenAI API.
 
