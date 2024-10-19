@@ -43,14 +43,24 @@ type chatResponse struct {
 }
 
 func main() {
-	// Command-line flags
-	fromLang := flag.String("f", "en", "Source language (default: en)")
-	toLang := flag.String("t", "en", "Target language (default: en)")
-	apiToken := flag.String("a", "", "OpenAI API token (optional)")
-	copyOutput := flag.Bool("cp", true, "Copy output to clipboard (default: true)")
-	verbose := flag.Bool("v", false, "Enable verbose mode (default: false)")
+	fromLang := flag.String("f", "en", "Source language")
+	flag.StringVar(fromLang, "from", "en", "Source language")
+	toLang := flag.String("t", "en", "Target language")
+	flag.StringVar(toLang, "to", "en", "Target language")
+	apiToken := flag.String("a", "", "OpenAI API token")
+	copyOutput := flag.Bool("c", true, "Copy output to clipboard")
+	flag.BoolVar(copyOutput, "copy", true, "Copy output to clipboard")
+	verbose := flag.Bool("verbose", false, "Enable verbose mode")
+	version := flag.Bool("version", false, "Show version")
+	flag.BoolVar(version, "v", false, "Show version")
+	flag.Usage = usage
 
 	flag.Parse()
+
+	if *version {
+		fmt.Println("Version:", Version)
+		os.Exit(0)
+	}
 
 	if *verbose {
 		log.Println("Verbose mode enabled.")
@@ -208,4 +218,33 @@ func translate(apiKey, fromLang, toLang, text string, verbose bool) (string, err
 	}
 
 	return "", errors.New("no translation found in response")
+}
+
+func usage() {
+	msg := `
+Usage:
+  translate-cli [options] <text>
+
+Options:
+  -f, -from <language>      Source language (default: en)
+  -t, -to   <language>      Target language (default: en)
+  -a        <api token>     OpenAI API token (default: ~/.config/openai/secret.yml)
+  -c, -copy                 Copy output to clipboard (default: true)
+  -verbose                  Enable verbose mode (default: false)
+  -v, -version              Show version
+  -help                     Show this help message
+
+Examples:
+  translate-cli -f en -t es "Hello, how are you?"
+  echo "Hello, how are you?" | translate-cli -f en -t es
+
+OpenAI API Token:
+  You can obtain an OpenAI API token from https://platform.openai.com/api-keys.
+  
+  The config file should be a YAML file with the following structure:
+    api_token: YOUR_API_TOKEN
+
+  And should be located at ~/.config/openai/secret.yml
+`
+	fmt.Fprintln(os.Stdout, msg)
 }
