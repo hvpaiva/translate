@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -17,27 +18,23 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Config represents the structure for reading the OpenAI API token from a YAML file.
-type Config struct {
+type config struct {
 	APIToken string `yaml:"api_token"`
 }
 
-// Message represents a single message in the OpenAI API chat request.
-type Message struct {
+type message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// ChatRequest represents the full request body for the OpenAI API chat completion.
-type ChatRequest struct {
+type chatRequest struct {
 	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
+	Messages []message `json:"messages"`
 }
 
-// ChatResponse represents the response structure from the OpenAI API.
-type ChatResponse struct {
+type chatResponse struct {
 	Choices []struct {
-		Message Message `json:"message"`
+		Message message `json:"message"`
 	} `json:"choices"`
 	Error struct {
 		Message string `json:"message"`
@@ -59,13 +56,29 @@ func main() {
 		log.Println("Verbose mode enabled.")
 	}
 
-	// Ensure there's text to translate
-	if flag.NArg() == 0 {
-		log.Fatal("No text provided for translation.")
-	}
-	textToTranslate := flag.Arg(0)
+	args := flag.Args()
 
-	// Retrieve the API token either from the flag or the config file
+	var textToTranslate string
+
+	if flag.NArg() > 0 {
+		textToTranslate = strings.Join(args, " ")
+	} else {
+		info, err := os.Stdin.Stat()
+		if err != nil {
+			fmt.Println("Error reading stdin:", err)
+			os.Exit(1)
+		}
+
+		if (info.Mode() & os.ModeCharDevice) == 0 {
+			scanner := bufio.NewScanner(os.Stdin)
+			var input []string
+			for scanner.Scan() {
+				input = append(input, scanner.Text())
+			}
+			textToTranslate = strings.Join(input, " ")
+		}
+	}
+
 	var token string
 	if *apiToken == "" {
 		var err error
@@ -81,16 +94,13 @@ func main() {
 		log.Printf("OpenAI Token: %s\n", token)
 	}
 
-	// Perform the translation
 	translatedText, err := translate(token, *fromLang, *toLang, textToTranslate, *verbose)
 	if err != nil {
 		log.Fatalf("Translation failed: %v", err)
 	}
 
-	// Output the translation
 	fmt.Println(translatedText)
 
-	// Copy the translation to the clipboard if the flag is enabled
 	if *copyOutput {
 		if err := clipboard.WriteAll(translatedText); err != nil {
 			log.Fatalf("Failed to copy translation to clipboard: %v", err)
@@ -98,7 +108,6 @@ func main() {
 	}
 }
 
-// loadTokenFromConfig attempts to load the OpenAI API token from the user's config file.
 func loadTokenFromConfig() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -111,7 +120,7 @@ func loadTokenFromConfig() (string, error) {
 		return "", fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var config Config
+	var config config
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse config file: %w", err)
@@ -124,13 +133,10 @@ func loadTokenFromConfig() (string, error) {
 	return config.APIToken, nil
 }
 
-// translate performs a request to the OpenAI API to translate the given text from one language to another.
 func translate(apiKey, fromLang, toLang, text string, verbose bool) (string, error) {
-	// Change the URL to the correct endpoint for chat models
 	url := "https://api.openai.com/v1/chat/completions"
 
-	// Constructing the message to be sent
-	messages := []Message{
+	messages := []message{
 		{
 			Role:    "system",
 			Content: "You are a translator that only gives the translated text",
@@ -141,13 +147,11 @@ func translate(apiKey, fromLang, toLang, text string, verbose bool) (string, err
 		},
 	}
 
-	// Creating the request body
-	chatRequest := ChatRequest{
-		Model:    "gpt-4o-mini", // Make sure this is a valid model
+	chatRequest := chatRequest{
+		Model:    "gpt-4o-mini",
 		Messages: messages,
 	}
 
-	// Marshal the request body into JSON
 	jsonPayload, err := json.Marshal(chatRequest)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal JSON payload: %w", err)
@@ -157,7 +161,6 @@ func translate(apiKey, fromLang, toLang, text string, verbose bool) (string, err
 		log.Printf("Request Payload: %s\n", string(jsonPayload))
 	}
 
-	// Create the HTTP request
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
@@ -166,7 +169,6 @@ func translate(apiKey, fromLang, toLang, text string, verbose bool) (string, err
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	// Execute the request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -174,7 +176,6 @@ func translate(apiKey, fromLang, toLang, text string, verbose bool) (string, err
 	}
 	defer resp.Body.Close()
 
-	// Handle non-OK responses
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		if verbose {
@@ -190,13 +191,11 @@ func translate(apiKey, fromLang, toLang, text string, verbose bool) (string, err
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Unmarshal the response into the ChatResponse struct
-	var chatResponse ChatResponse
+	var chatResponse chatResponse
 	if err := json.Unmarshal(body, &chatResponse); err != nil {
 		return "", fmt.Errorf("failed to unmarshal response JSON: %w", err)
 	}
 
-	// Check if there's an error in the response
 	if chatResponse.Error.Message != "" {
 		if verbose {
 			log.Printf("OpenAI API Error: %s (Type: %s)\n", chatResponse.Error.Message, chatResponse.Error.Type)
@@ -204,7 +203,6 @@ func translate(apiKey, fromLang, toLang, text string, verbose bool) (string, err
 		return "", errors.New(chatResponse.Error.Message)
 	}
 
-	// Extract the translated text
 	if len(chatResponse.Choices) > 0 {
 		return strings.TrimSpace(chatResponse.Choices[0].Message.Content), nil
 	}
